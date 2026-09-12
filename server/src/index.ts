@@ -2,7 +2,7 @@ import cors from 'cors';
 import dotenv from 'dotenv';
 import express from 'express';
 import { classifyArticle, classifyPending } from './classifier.js';
-import { db, listArticles, migrate, toApiArticle } from './db.js';
+import { db, getArticle, listArticles, migrate, toApiArticle } from './db.js';
 import { refreshFeed, upsertFeed } from './feeds.js';
 
 dotenv.config({ path: '../.env' });
@@ -71,6 +71,18 @@ app.get('/api/articles', (req, res) => {
   res.json({ view, articles });
 });
 
+app.get('/api/articles/:id', (req, res) => {
+  const articleId = Number(req.params.id);
+  const article = getArticle(articleId);
+
+  if (!article) {
+    res.status(404).json({ error: 'article not found' });
+    return;
+  }
+
+  res.json({ article: toApiArticle(article) });
+});
+
 app.post('/api/articles/:id/classify', async (req, res, next) => {
   try {
     const articleId = Number(req.params.id);
@@ -117,7 +129,7 @@ app.post('/api/articles/:id/feedback', (req, res) => {
     INSERT INTO article_feedback (article_id, rating, read_depth, opened_at, updated_at)
     VALUES (@articleId, @rating, @readDepth, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
     ON CONFLICT(article_id) DO UPDATE SET
-      rating = excluded.rating,
+      rating = COALESCE(excluded.rating, article_feedback.rating),
       read_depth = MAX(article_feedback.read_depth, excluded.read_depth),
       updated_at = CURRENT_TIMESTAMP
   `).run({ articleId, rating: rating ?? null, readDepth: boundedReadDepth });

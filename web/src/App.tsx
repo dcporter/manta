@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import type { FormEvent } from 'react'
+import type { FormEvent, UIEvent } from 'react'
 import './App.css'
 
 type Article = {
@@ -24,6 +24,15 @@ type Feed = {
   last_refreshed_at: string | null
 }
 
+function textFromHtml(value: string) {
+  return value
+    .replace(/<script[\s\S]*?<\/script>/gi, '')
+    .replace(/<style[\s\S]*?<\/style>/gi, '')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
 function App() {
   const [view, setView] = useState<'selected' | 'all'>('selected')
   const [articles, setArticles] = useState<Article[]>([])
@@ -31,6 +40,7 @@ function App() {
   const [feedUrl, setFeedUrl] = useState('')
   const [status, setStatus] = useState('')
   const [isBusy, setIsBusy] = useState(false)
+  const [readerArticle, setReaderArticle] = useState<Article | null>(null)
 
   async function loadArticles(nextView = view) {
     const response = await fetch(`/api/articles?view=${nextView}`)
@@ -102,19 +112,56 @@ function App() {
     }
   }
 
-  async function sendFeedback(articleId: string, rating: 'up' | 'down') {
-    const article = articles.find((item) => item.id === articleId)
-    const readDepth = article?.readDepth ?? 0
-
+  async function updateFeedback(articleId: string, feedback: { rating?: 'up' | 'down'; readDepth?: number }) {
     await fetch(`/api/articles/${articleId}/feedback`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ rating, readDepth }),
+      body: JSON.stringify(feedback),
     })
 
     setArticles((items) =>
-      items.map((item) => (item.id === articleId ? { ...item, rating } : item)),
+      items.map((item) =>
+        item.id === articleId
+          ? {
+              ...item,
+              rating: feedback.rating ?? item.rating,
+              readDepth: Math.max(item.readDepth, feedback.readDepth ?? item.readDepth),
+            }
+          : item,
+      ),
     )
+    setReaderArticle((item) =>
+      item?.id === articleId
+        ? {
+            ...item,
+            rating: feedback.rating ?? item.rating,
+            readDepth: Math.max(item.readDepth, feedback.readDepth ?? item.readDepth),
+          }
+        : item,
+    )
+  }
+
+  async function openReader(articleId: string) {
+    const response = await fetch(`/api/articles/${articleId}`)
+    if (!response.ok) throw new Error(await response.text())
+    const data = await response.json()
+    setReaderArticle(data.article)
+    await updateFeedback(articleId, { readDepth: data.article.readDepth ?? 0 })
+  }
+
+  function trackReadingDepth(event: UIEvent<HTMLElement>) {
+    if (!readerArticle) return
+
+    const element = event.currentTarget
+    const scrollable = element.scrollHeight - element.clientHeight
+    const readDepth = scrollable <= 0 ? 1 : Math.min(1, element.scrollTop / scrollable)
+    const rounded = Math.round(readDepth * 20) / 20
+
+    if (rounded > readerArticle.readDepth) {
+      updateFeedback(readerArticle.id, { readDepth: rounded }).catch((error) =>
+        console.error('Failed to update read depth', error),
+      )
+    }
   }
 
   return (
@@ -169,27 +216,60 @@ function App() {
             <div>
               <p className="source">{article.source}</p>
               <h2>{article.title}</h2>
-              <p>{article.summary}</p>
+              <p>{textFromHtml(article.summary)}</p>
               {article.llmReason && (
                 <p className="reason">
                   Score {article.llmScore?.toFixed(2)} · {article.llmReason}
                 </p>
               )}
+              {article.readDepth > 0 && <p className="reason">Read depth: {Math.round(article.readDepth * 100)}%</p>}
             </div>
             <div className="article-actions">
+              <button onClick={() => openReader(article.id)}>Open reader</button>
               <a href={article.url} target="_blank" rel="noreferrer">
-                Read
+                Source
               </a>
-              <button onClick={() => sendFeedback(article.id, 'up')} aria-pressed={article.rating === 'up'}>
+              <button onClick={() => updateFeedback(article.id, { rating: 'up', readDepth: article.readDepth })} aria-pressed={article.rating === 'up'}>
                 👍
               </button>
-              <button onClick={() => sendFeedback(article.id, 'down')} aria-pressed={article.rating === 'down'}>
+              <button onClick={() => updateFeedback(article.id, { rating: 'down', readDepth: article.readDepth })} aria-pressed={article.rating === 'down'}>
                 👎
               </button>
             </div>
           </article>
         ))}
       </section>
+
+      {readerArticle && (
+        <div className="reader-backdrop" role="dialog" aria-modal="true" aria-label={readerArticle.title}>
+          <article className="reader-panel">
+            <header className="reader-header">
+              <div>
+                <p className="source">{readerArticle.source}</p>
+                <h2>{readerArticle.title}</h2>
+                <p className="reason">Read depth: {Math.round(readerArticle.readDepth * 100)}%</p>
+              </div>
+              <button onClick={() => setReaderArticle(null)}>Close</button>
+            </header>
+            <div className="reader-body" onScroll={trackReadingDepth}>
+              <p>{textFromHtml(readerArticle.summary) || 'No embedded article content was available from this feed item.'}</p>
+              <p>
+                <a href={readerArticle.url} target="_blank" rel="noreferrer">
+                  Continue at source
+                </a>
+              </p>
+            </div>
+            <footer className="article-actions reader-actions">
+              <button onClick={() => updateFeedback(readerArticle.id, { rating: 'up', readDepth: readerArticle.readDepth })} aria-pressed={readerArticle.rating === 'up'}>
+                👍 Useful
+              </button>
+              <button onClick={() => updateFeedback(readerArticle.id, { rating: 'down', readDepth: readerArticle.readDepth })} aria-pressed={readerArticle.rating === 'down'}>
+                👎 Not useful
+              </button>
+            </footer>
+          </article>
+        </div>
+      )}
     </main>
   )
 }

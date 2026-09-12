@@ -63,22 +63,33 @@ export function migrate() {
   `);
 }
 
+const articleSelect = `
+  SELECT
+    articles.*,
+    feeds.title AS feed_title,
+    article_feedback.rating,
+    article_feedback.read_depth
+  FROM articles
+  JOIN feeds ON feeds.id = articles.feed_id
+  LEFT JOIN article_feedback ON article_feedback.article_id = articles.id
+`;
+
 export function listArticles(view: 'selected' | 'all') {
   const where = view === 'selected' ? 'WHERE articles.is_selected = 1' : '';
 
   return db.prepare(`
-    SELECT
-      articles.*,
-      feeds.title AS feed_title,
-      article_feedback.rating,
-      article_feedback.read_depth
-    FROM articles
-    JOIN feeds ON feeds.id = articles.feed_id
-    LEFT JOIN article_feedback ON article_feedback.article_id = articles.id
+    ${articleSelect}
     ${where}
     ORDER BY COALESCE(articles.published_at, articles.created_at) DESC
     LIMIT 100
   `).all() as ArticleRow[];
+}
+
+export function getArticle(articleId: number) {
+  return db.prepare(`
+    ${articleSelect}
+    WHERE articles.id = ?
+  `).get(articleId) as ArticleRow | undefined;
 }
 
 export function toApiArticle(row: ArticleRow) {

@@ -28,6 +28,7 @@ The web app runs on Vite and proxies `/api` requests to the server on port `3001
 - `POST /api/feeds` with `{ "url": "https://...", "refresh": true, "classify": true }`
 - `POST /api/feeds/:id/refresh` with optional `{ "classify": true }`
 - `GET /api/articles?view=selected|all`
+- `GET /api/articles/:id`
 - `POST /api/articles/:id/classify`
 - `POST /api/classify-pending` with optional `{ "limit": 20 }`
 - `POST /api/articles/:id/feedback` with `{ "rating": "up" | "down", "readDepth": 0.0 }`
@@ -45,6 +46,6 @@ SQLite is initialized automatically at `DATABASE_PATH` when the server starts. C
 - Selected article view
 - All article view
 - Thumbs up/down feedback
-- Reading-depth tracking signal
+- In-app reader with reading-depth tracking signal
 - RSS ingestion
 - LLM-based article filtering
