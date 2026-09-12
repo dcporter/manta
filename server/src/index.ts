@@ -1,6 +1,7 @@
 import cors from 'cors';
 import dotenv from 'dotenv';
 import express from 'express';
+import { classifyArticle, classifyPending } from './classifier.js';
 import { db, listArticles, migrate, toApiArticle } from './db.js';
 import { refreshFeed, upsertFeed } from './feeds.js';
 
@@ -31,7 +32,7 @@ app.get('/api/feeds', (_req, res) => {
 
 app.post('/api/feeds', async (req, res, next) => {
   try {
-    const { url, refresh = true } = req.body as { url?: string; refresh?: boolean };
+    const { url, refresh = true, classify = true } = req.body as { url?: string; refresh?: boolean; classify?: boolean };
 
     if (!url) {
       res.status(400).json({ error: 'url is required' });
@@ -39,7 +40,7 @@ app.post('/api/feeds', async (req, res, next) => {
     }
 
     const feed = upsertFeed(url);
-    const refreshResult = refresh ? await refreshFeed(Number(feed.id)) : null;
+    const refreshResult = refresh ? await refreshFeed(Number(feed.id), classify) : null;
 
     res.status(201).json({ feed, refresh: refreshResult });
   } catch (error) {
@@ -49,7 +50,8 @@ app.post('/api/feeds', async (req, res, next) => {
 
 app.post('/api/feeds/:id/refresh', async (req, res, next) => {
   try {
-    const result = await refreshFeed(Number(req.params.id));
+    const classify = req.body?.classify !== false;
+    const result = await refreshFeed(Number(req.params.id), classify);
 
     if (!result) {
       res.status(404).json({ error: 'feed not found' });
@@ -67,6 +69,32 @@ app.get('/api/articles', (req, res) => {
   const articles = listArticles(view).map(toApiArticle);
 
   res.json({ view, articles });
+});
+
+app.post('/api/articles/:id/classify', async (req, res, next) => {
+  try {
+    const articleId = Number(req.params.id);
+    const result = await classifyArticle(articleId);
+
+    if (!result) {
+      res.status(404).json({ error: 'article not found' });
+      return;
+    }
+
+    res.json(result);
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.post('/api/classify-pending', async (req, res, next) => {
+  try {
+    const limit = Math.max(1, Math.min(100, Number(req.body?.limit ?? 20)));
+    const results = await classifyPending(limit);
+    res.json({ classified: results.length, results });
+  } catch (error) {
+    next(error);
+  }
 });
 
 app.post('/api/articles/:id/feedback', (req, res) => {

@@ -9,6 +9,8 @@ Manta is a local web app for filtering article feeds. It will ingest RSS feeds, 
 - Planned local SQLite storage in `data/`
 - OpenAI API initially for article filtering/classification
 
+If `OPENAI_API_KEY` is missing, Manta uses a simple local heuristic fallback so ingestion still works during development.
+
 ## Development
 
 ```bash
@@ -23,9 +25,11 @@ The web app runs on Vite and proxies `/api` requests to the server on port `3001
 
 - `GET /api/health`
 - `GET /api/feeds`
-- `POST /api/feeds` with `{ "url": "https://...", "refresh": true }`
-- `POST /api/feeds/:id/refresh`
+- `POST /api/feeds` with `{ "url": "https://...", "refresh": true, "classify": true }`
+- `POST /api/feeds/:id/refresh` with optional `{ "classify": true }`
 - `GET /api/articles?view=selected|all`
+- `POST /api/articles/:id/classify`
+- `POST /api/classify-pending` with optional `{ "limit": 20 }`
 - `POST /api/articles/:id/feedback` with `{ "rating": "up" | "down", "readDepth": 0.0 }`
 
 ## Storage

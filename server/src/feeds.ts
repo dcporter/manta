@@ -1,4 +1,5 @@
 import Parser from 'rss-parser';
+import { classifyPending } from './classifier.js';
 import { db } from './db.js';
 
 const parser = new Parser();
@@ -22,7 +23,7 @@ export function upsertFeed(url: string, title?: string) {
   return result;
 }
 
-export async function refreshFeed(feedId: number) {
+export async function refreshFeed(feedId: number, classify = true) {
   const feed = db.prepare('SELECT id, url FROM feeds WHERE id = ?').get(feedId) as { id: number; url: string } | undefined;
 
   if (!feed) {
@@ -67,8 +68,7 @@ export async function refreshFeed(feedId: number) {
         content: item.content ?? null,
         author: item.creator ?? item.author ?? null,
         publishedAt: item.isoDate ?? item.pubDate ?? null,
-        // Until LLM classification exists, newly ingested articles are visible in Selected.
-        isSelected: 1,
+        isSelected: 0,
       });
       insertedOrUpdated += 1;
     }
@@ -76,10 +76,13 @@ export async function refreshFeed(feedId: number) {
 
   ingest();
 
+  const classifications = classify ? await classifyPending(20) : [];
+
   return {
     feedId: feed.id,
     title: feedTitle,
     itemCount: parsed.items.length,
     insertedOrUpdated,
+    classified: classifications.length,
   };
 }
