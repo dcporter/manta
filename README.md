@@ -19,6 +19,23 @@ npm run dev
 
 The web app runs on Vite and proxies `/api` requests to the server on port `3001`.
 
+## API currently scaffolded
+
+- `GET /api/health`
+- `GET /api/feeds`
+- `POST /api/feeds` with `{ "url": "https://...", "refresh": true }`
+- `POST /api/feeds/:id/refresh`
+- `GET /api/articles?view=selected|all`
+- `POST /api/articles/:id/feedback` with `{ "rating": "up" | "down", "readDepth": 0.0 }`
+
+## Storage
+
+SQLite is initialized automatically at `DATABASE_PATH` when the server starts. Current tables:
+
+- `feeds`
+- `articles`
+- `article_feedback`
+
 ## Initial product shape
 
 - Selected article view
